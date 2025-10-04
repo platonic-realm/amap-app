@@ -24,6 +24,7 @@ from src.configs import PROJECT_DIR
 # Local Imports
 
 
+
 def filter_files(_regex, _dir):
     if _dir is None or _dir == '':
         return []
@@ -258,6 +259,7 @@ def plot_labels(_image,
 
 def get_ROI_AMAP(predictions, img_sh):
     MIN_AREA = 500
+
     predictions = cv2.resize(predictions, img_sh, interpolation=cv2.INTER_NEAREST)
     all_pred = predictions > 0
     all_pred = all_pred.astype(np.uint8)
@@ -276,7 +278,7 @@ def get_ROI_AMAP(predictions, img_sh):
     kernel = np.zeros((11, 11), np.uint8)
     kernel = cv2.circle(kernel, (5, 5), 5, 1, 0)
 
-    mask_roi = cv2.dilate(mask_roi, kernel, iterations=15)
+    mask_roi = cv2.dilate(mask_roi, kernel, iterations=25)
     mask_roi = cv2.erode(mask_roi, kernel, iterations=10)
     mask_roi[mask_orig == 1] = 1
 
@@ -291,23 +293,42 @@ def get_ROI_AMAP(predictions, img_sh):
 
 
 def get_ROI_AMAPAPP(predictions, img_sh):
+    MIN_AREA = 40000
     predictions = cv2.resize(predictions,
                              img_sh,
                              interpolation=cv2.INTER_NEAREST)
 
+    ero_kernel = np.array([[0, 1, 0],
+                           [1, 1, 1],
+                           [0, 1, 0]], dtype=np.uint8)
+
     kernel = np.array([[0, 1, 0],
                        [1, 1, 1],
                        [0, 1, 0]], dtype=np.uint8)
-    # kernel = cv2.circle(kernel, (5, 5), 5, 1, 0)
+
+    dil_kernel = cv2.circle(kernel, (5, 5), 5, 1, 0)
 
     mask_roi = predictions.copy().astype(np.uint8)
     mask_roi[mask_roi == 1] = 0
     mask_roi = cv2.dilate(mask_roi,
-                          kernel,
-                          iterations=15)
+                          dil_kernel,
+                          iterations=65)
     mask_roi = cv2.erode(mask_roi,
-                         kernel,
-                         iterations=7)
+                         ero_kernel,
+                         iterations=6)
+
+    # Find connected components
+    nb_components, output, stats, centroids = cv2.connectedComponentsWithStats(mask_roi, connectivity=8)
+    # Filter out small components
+    sizes = stats[1:, -1]
+    nb_components = nb_components - 1
+
+    new_mask = np.zeros((output.shape), dtype=np.uint8)
+    for i in range(0, nb_components):
+        if sizes[i] >= MIN_AREA:
+            new_mask[output == i + 1] = 1
+
+    mask_roi = new_mask
 
     sd = predictions.copy()
     sd[sd == 1] = 0

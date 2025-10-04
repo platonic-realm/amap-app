@@ -1,6 +1,7 @@
 # Python Imports
 import os
 import re
+import logging
 
 # Library Imports
 import torch
@@ -12,7 +13,7 @@ from PIL import Image
 # Local Imports
 from src.utils import get_tiff_resolution, get_resolution
 
-MAX_N_INST = 380
+MAX_N_INST = 450
 
 
 class PredictionDataset(Dataset):
@@ -40,6 +41,9 @@ class PredictionDataset(Dataset):
             steps_per_axis = int((sh - _sample_dimension) // self.steps + 1)
             self.per_img.append(steps_per_axis ** 2)
 
+            if res == 1:
+                print(file_name)
+
         self.imgs = {}
         self.per_img_cumsum = np.cumsum(self.per_img)
         self.cur_img_i = -1
@@ -54,21 +58,23 @@ class PredictionDataset(Dataset):
         return len(self.image_files)
 
     def read_file(self, fn):
-        img = tifffile.imread(os.path.join(self.source_directory, fn))
+        logging.info("Reading file: %s", fn)
 
         # import pudb.remote
         # pudb.remote.set_trace(host='0.0.0.0', port=6900)
 
+        img = tifffile.imread(os.path.join(self.source_directory, fn))
+
         # Choosing the channel and max projecting if needed
 
-        if self.configs['is_stacked']:
-            if len(img.shape) > 3:
-                if img.shape[0] == 2:
-                    img = np.max(img, axis=1)
-                else:
-                    img = np.max(img, axis=0)
-            elif len(img.shape) == 3:
+        # if self.configs['is_stacked']:
+        if len(img.shape) > 3:
+            if img.shape[0] == 2:
+                img = np.max(img, axis=1)
+            else:
                 img = np.max(img, axis=0)
+        elif len(img.shape) == 3:
+            img = np.max(img, axis=0)
 
         if len(img.shape) > 2:
             img = img[self.configs['target_channel']]
@@ -90,9 +96,13 @@ class PredictionDataset(Dataset):
 
     def image_shape_by_id(self, _image_id):
         fn = self.image_files[_image_id]
+        if not (fn in self.imgs):
+            self.imgs[fn] = self.read_file(fn)
+
         return self.imgs[fn].shape
 
     def __getitem__(self, i):
+
         file_i = np.min(np.where(self.per_img_cumsum > i)[0])
 
         n = i

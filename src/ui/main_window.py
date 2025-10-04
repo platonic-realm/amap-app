@@ -259,7 +259,7 @@ class MainWindow(QMainWindow):
             questionBox.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
             questionBox.setDefaultButton(QMessageBox.No)
             answer = questionBox.exec()
-            
+
             if answer == questionBox.No:
                 # User declined, revert the checkbox to unchecked state
                 self.check_include_sd.setChecked(False)
@@ -498,7 +498,7 @@ class MainWindow(QMainWindow):
             "cpu_allocation": 5,
             "mem_allocation": 2,
             "target_channel": 0,
-            "batch_size": 4,
+            "batch_size": 8,
             "dimensionality": 16,
             "is_stacked": is_stacked,
             "is_segmentation_finished": False,

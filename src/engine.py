@@ -18,7 +18,7 @@ from src.nn.dataset import PredictionDataset
 from src.nn.unet import UNet
 from src.utils import mkdirs, plot_labels
 from src.configs import LOG_START_PROC_SIGNATURE
-from src.utils import get_ROI_from_predictions
+from src.utils import get_ROI_from_predictions, get_resolution
 
 
 # Labels of the model output
@@ -156,14 +156,14 @@ class AMAPEngine:
                           n_dim=self.embedding_dimensionality,
                           bilinear=True)
 
-        logging.debug("Moving the model to CPU.")
-        device = torch.device('cpu')
+        device = device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        logging.info("Moving the model to %s.", device)
         unet_model.to(device)
         unet_model.eval()
 
-        logging.debug("Loading the checkpoint.")
-        # model_checkpoint_path = "res/model/cp_10940.pth"
-        model_checkpoint_path = "res/model/cp_11128.pth"
+        logging.info("Loading the checkpoint.")
+        model_checkpoint_path = "res/model/cp_10940.pth"
+        # model_checkpoint_path = "res/model/cp_12940.pth"
         unet_model.load_state_dict(torch.load(model_checkpoint_path,
                                               map_location=torch.device('cpu')))
 
@@ -172,7 +172,7 @@ class AMAPEngine:
                             batch_size=self.batch_size,
                             # It's important to turn off shuffle
                             shuffle=False,
-                            num_workers=0,
+                            num_workers=4,
                             pin_memory=True)
 
         with torch.no_grad():
@@ -186,6 +186,8 @@ class AMAPEngine:
                 images = batch['image']
                 offsets = batch['offs']
 
+                filepath = self.dataset.image_files[self.image_id]
+                logging.info(f"Segmentaion batch id: {batch_i} for the file: {filepath}")
                 images = images.to(device)
                 # The inferene happens here
                 semantic_predictions, _ = unet_model(images)
@@ -227,7 +229,10 @@ class AMAPEngine:
                         logging.info("Applying CCL on the results.")
                         cc_number, cc_objects = cv2.connectedComponents(self.semantic_mask.astype(np.uint8))
 
-                        self.remove_small_and_on_border(cc_number, cc_objects)
+                        self.remove_small_and_on_border(cc_number, cc_objects,
+                                                        os.path.join(self.source_directory,
+                                                                     filepath))
+                        # self.fill_out_holes(cc_number, cc_objects)
 
                         mask_img[0] = cc_objects
 
@@ -260,7 +265,7 @@ class AMAPEngine:
                         self.image_id = offset[0]
 
                     # Here we add the patch to list of procesed patches
-                    self.patches.append((offsets[index], np.argmax(semantic_predictions[index], axis=0)))
+                    self.patches.append((offsets[index], np.argmax(semantic_predictions.cpu()[index], axis=0)))
 
                 logging.debug(f"Inference of the batch no: {batch_i} finished.")
 
@@ -272,7 +277,74 @@ class AMAPEngine:
 
         logging.info("Finished, Exiting...")
 
-    def remove_small_and_on_border(self, _cc_number, _image):
+    def fill_concave_regions_convex_hull(self, _cc_number, _image):
+        """
+        Fill concave regions by computing convex hull of each component.
+        This will fill indentations and create smooth, convex shapes.
+        """
+        logging.debug("Filling concave regions using convex hull method.")
+
+        for component_id in range(1, _cc_number):
+            component_mask = (_image == component_id).astype(np.uint8)
+
+            if np.sum(component_mask) == 0:
+                continue
+
+            # Find contours of the component
+            contours, _ = cv2.findContours(component_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+            if len(contours) == 0:
+                continue
+
+            # Work with the largest contour
+            largest_contour = max(contours, key=cv2.contourArea)
+
+            # Compute convex hull
+            hull = cv2.convexHull(largest_contour)
+
+            # Create a mask from the convex hull
+            hull_mask = np.zeros_like(component_mask)
+            cv2.fillPoly(hull_mask, [hull], 1)
+
+            # Fill the concave regions (pixels inside hull but outside original shape)
+            newly_filled = (hull_mask == 1) & (component_mask == 0)
+            _image[newly_filled] = component_id
+
+    def fill_out_holes(self, _cc_number, _image):
+        """
+        Fill holes in connected components using OpenCV's morphological operations.
+
+        Args:
+            _cc_number: Number of connected components
+            _image: The image containing connected components (modified in-place)
+        """
+        logging.debug("Filling holes in connected components.")
+
+        # Process each connected component individually
+        for component_id in range(1, _cc_number):
+            # Create a binary mask for the current component
+            component_mask = (_image == component_id).astype(np.uint8)
+
+            # Skip if component doesn't exist (might have been removed by previous operations)
+            if np.sum(component_mask) == 0:
+                continue
+
+            # Find contours of the component
+            contours, _ = cv2.findContours(component_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+            # Fill holes by drawing filled contours
+            if contours:
+                # Create a temporary mask to fill holes
+                filled_mask = np.zeros_like(component_mask)
+                cv2.drawContours(filled_mask, contours, -1, 1, thickness=-1)  # Fill all contours
+
+                # Find the newly filled pixels (holes that were filled)
+                newly_filled = (filled_mask == 1) & (component_mask == 0)
+
+                # Set the newly filled pixels to the component ID in the original image
+                _image[newly_filled] = component_id
+
+    def remove_small_and_on_border(self, _cc_number, _image, _file_path):
         logging.debug("Removing objects on borders.")
         on_border = np.unique(np.concatenate(
             [np.unique(_image[:, 0]),
@@ -283,7 +355,9 @@ class AMAPEngine:
         for i in on_border:
             _image[_image == i] = 0
 
-        logging.debug(f"Removing objects smaller than {self.MIN_PIXELS} pixels.")
+        # res = get_resolution(_file_path, _image.shape[1])
+        # min_pix = 0.1 / (res ** 2)
+        # logging.info(f"Removing objects smaller than {min_pix} pixels.")
         for i in range(1, _cc_number):
             is_i = _image == i
             if np.sum(is_i) < self.MIN_PIXELS:
