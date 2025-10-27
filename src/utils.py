@@ -24,7 +24,6 @@ from src.configs import PROJECT_DIR
 # Local Imports
 
 
-
 def filter_files(_regex, _dir):
     if _dir is None or _dir == '':
         return []
@@ -278,7 +277,7 @@ def get_ROI_AMAP(predictions, img_sh):
     kernel = np.zeros((11, 11), np.uint8)
     kernel = cv2.circle(kernel, (5, 5), 5, 1, 0)
 
-    mask_roi = cv2.dilate(mask_roi, kernel, iterations=25)
+    mask_roi = cv2.dilate(mask_roi, kernel, iterations=15)
     mask_roi = cv2.erode(mask_roi, kernel, iterations=10)
     mask_roi[mask_orig == 1] = 1
 
@@ -293,7 +292,7 @@ def get_ROI_AMAP(predictions, img_sh):
 
 
 def get_ROI_AMAPAPP(predictions, img_sh):
-    MIN_AREA = 40000
+    MIN_AREA = 5000
     predictions = cv2.resize(predictions,
                              img_sh,
                              interpolation=cv2.INTER_NEAREST)
@@ -312,10 +311,10 @@ def get_ROI_AMAPAPP(predictions, img_sh):
     mask_roi[mask_roi == 1] = 0
     mask_roi = cv2.dilate(mask_roi,
                           dil_kernel,
-                          iterations=65)
+                          iterations=25)
     mask_roi = cv2.erode(mask_roi,
                          ero_kernel,
-                         iterations=6)
+                         iterations=8)
 
     # Find connected components
     nb_components, output, stats, centroids = cv2.connectedComponentsWithStats(mask_roi, connectivity=8)
