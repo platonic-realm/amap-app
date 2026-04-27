@@ -12,7 +12,7 @@ from PySide6 import QtCore
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap, QFont, QIcon
 from PySide6.QtWidgets import QLabel, QMainWindow, QPushButton, QFileDialog, QMessageBox, QSpinBox, QListWidget, \
-    QSlider, QCheckBox, QApplication
+    QSlider, QCheckBox, QApplication, QComboBox
 
 # Local Imports
 from src.configs import PROJECT_DIR, HEADER_IMAGE, APP_ICON
@@ -55,6 +55,8 @@ class MainWindow(QMainWindow):
         self.check_old_roi = None
         # This is a checkbox that determine if we should include sd length analysis
         self.check_include_sd = None
+        # This is a combobox to select the model checkpoint
+        self.combo_checkpoint = None
         # This is a QListWidget that demonstrates projects list
         self.list_projects = None
         # This is a QSlider for resource allocation configuration
@@ -103,6 +105,9 @@ class MainWindow(QMainWindow):
         label = self.findChild(QLabel, "label_channel")
         label.setFont(QFont("Times", 14))
 
+        label = self.findChild(QLabel, "label_checkpoint")
+        label.setFont(QFont("Times", 14))
+
         label = self.findChild(QLabel, "label_results")
         label.setFont(QFont("Times", 14))
 
@@ -111,6 +116,7 @@ class MainWindow(QMainWindow):
         self.label_mem_alloc = self.findChild(QLabel, "label_mem_allocation")
         self.label_channel = self.findChild(QLabel, "label_channel")
         self.label_results = self.findChild(QLabel, "label_results")
+        self.label_checkpoint = self.findChild(QLabel, "label_checkpoint")
 
         # Setting the window icon
         self.app_icon = QIcon(APP_ICON)
@@ -157,6 +163,11 @@ class MainWindow(QMainWindow):
         self.check_include_sd = self.findChild(QCheckBox, "check_include_sd")
         self.check_include_sd.toggled.connect(self.checkbox_include_sd_change)
 
+        # Handling checkpoint combo box
+        self.combo_checkpoint = self.findChild(QComboBox, "combo_checkpoint")
+        self.populate_checkpoint_combo()
+        self.combo_checkpoint.currentTextChanged.connect(self.checkpoint_change)
+
         # Handling list of projects
         self.list_projects = self.findChild(QListWidget, "list_widget_projects")
         self.list_projects.setFont(QFont("Times", 18))
@@ -189,6 +200,13 @@ class MainWindow(QMainWindow):
         self.check_include_sd.setChecked(project_configs.get('does_include_sd', False))
         self.check_include_sd.setEnabled(True)
 
+        checkpoint = project_configs.get('model_checkpoint', 'cp_10940.pth')
+        idx = self.combo_checkpoint.findText(checkpoint)
+        if idx >= 0:
+            self.combo_checkpoint.setCurrentIndex(idx)
+        self.combo_checkpoint.setEnabled(True)
+        self.label_checkpoint.setEnabled(True)
+
         self.check_stacked.setChecked(project_configs['is_stacked'])
         self.check_stacked.setEnabled(True)
         self.label_channel.setEnabled(True)
@@ -202,6 +220,7 @@ class MainWindow(QMainWindow):
         self.check_old_roi.setEnabled(not project_configs['is_morphometry_finished'])
         self.check_include_sd.setEnabled(not project_configs['is_morphometry_finished'])
         self.spin_channel.setEnabled(not project_configs['is_morphometry_finished'])
+        self.combo_checkpoint.setEnabled(not project_configs['is_morphometry_finished'])
         self.button_stop.setEnabled(False)
 
         self.button_remove_project.setEnabled(True)
@@ -237,6 +256,26 @@ class MainWindow(QMainWindow):
         project_configs_path = f'./{PROJECT_DIR}/{project_name}/conf.json'
         project_configs = self.load_project_configuration(project_configs_path)
         project_configs['is_old_roi'] = True if _value == 2 else False
+        self.save_project_configuration(project_configs_path, project_configs)
+
+    # Populates the checkpoint combo box with available model files
+    def populate_checkpoint_combo(self):
+        self.combo_checkpoint.clear()
+        checkpoint_dir = "res/model/"
+        if os.path.exists(checkpoint_dir):
+            checkpoint_files = [f for f in os.listdir(checkpoint_dir) if f.endswith('.pth')]
+            self.combo_checkpoint.addItems(checkpoint_files)
+        if self.combo_checkpoint.count() == 0:
+            self.combo_checkpoint.addItem("cp_10940.pth")
+
+    # Changes the checkpoint configuration for the selected project
+    def checkpoint_change(self, _text):
+        if self.is_disabled or self.is_loading:
+            return
+        project_name = self.list_projects.currentItem().text()
+        project_configs_path = f'./{PROJECT_DIR}/{project_name}/conf.json'
+        project_configs = self.load_project_configuration(project_configs_path)
+        project_configs['model_checkpoint'] = _text
         self.save_project_configuration(project_configs_path, project_configs)
 
     # Changes the stacked configuration for the selected project
@@ -504,7 +543,8 @@ class MainWindow(QMainWindow):
             "is_segmentation_finished": False,
             "is_morphometry_finished": False,
             "is_old_roi": False,
-            "does_include_sd": False
+            "does_include_sd": False,
+            "model_checkpoint": "cp_10940.pth"
         }
         self.save_project_configuration(f"{destination_directory}/conf.json", project_configuration)
         self.load_projects()
@@ -545,6 +585,8 @@ class MainWindow(QMainWindow):
         self.check_old_roi.setEnabled(False)
         self.check_include_sd.setEnabled(False)
         self.label_channel.setEnabled(False)
+        self.combo_checkpoint.setEnabled(False)
+        self.label_checkpoint.setEnabled(False)
         self.button_start.setEnabled(False)
         self.button_stop.setEnabled(False)
         self.button_remove_project.setEnabled(False)
@@ -578,6 +620,8 @@ class MainWindow(QMainWindow):
                 self.button_results_morphometry.isEnabled(),
                 self.check_old_roi.isEnabled(),
                 self.check_include_sd.isEnabled(),
+                self.combo_checkpoint.isEnabled(),
+                self.label_checkpoint.isEnabled(),
                 )
 
     def restore_UI_state(self, _UI_state):
@@ -603,6 +647,8 @@ class MainWindow(QMainWindow):
         self.label_results.setEnabled(_UI_state[16]),
         self.button_results_segmentation.setEnabled(_UI_state[17]),
         self.button_results_morphometry.setEnabled(_UI_state[18]),
+        self.combo_checkpoint.setEnabled(_UI_state[21])
+        self.label_checkpoint.setEnabled(_UI_state[22])
         self.is_loading = False
 
     def load_projects(self):

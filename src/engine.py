@@ -54,6 +54,7 @@ class AMAPEngine:
         self.mem_alloc_value = _configs['mem_allocation'] + 1
         self.is_stacked = _configs['is_stacked']
         self.target_channel = _configs['target_channel']
+        self.model_checkpoint = _configs.get('model_checkpoint', 'cp_10940.pth')
 
         # This variable is used to stop the engine
         self.proceed = mp.Value('i', 1)
@@ -162,10 +163,9 @@ class AMAPEngine:
         unet_model.eval()
 
         logging.info("Loading the checkpoint.")
-        model_checkpoint_path = "res/model/cp_10940.pth"
-        # model_checkpoint_path = "res/model/cp_12940.pth"
+        model_checkpoint_path = os.path.join("res/model", self.model_checkpoint)
         unet_model.load_state_dict(torch.load(model_checkpoint_path,
-                                              map_location=torch.device('cpu')))
+                                               map_location=torch.device('cpu')))
 
         logging.debug("Creating the data loader.")
         loader = DataLoader(self.dataset,

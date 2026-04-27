@@ -16,11 +16,11 @@ from PySide6.QtGui import (QAction, QBrush, QColor, QConicalGradient,
     QIcon, QImage, QKeySequence, QLinearGradient,
     QPainter, QPalette, QPixmap, QRadialGradient,
     QTransform)
-from PySide6.QtWidgets import (QApplication, QCheckBox, QFrame, QGridLayout,
-    QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
-    QMainWindow, QPushButton, QSizePolicy, QSlider,
-    QSpacerItem, QSpinBox, QStatusBar, QVBoxLayout,
-    QWidget)
+from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFrame,
+    QGridLayout, QHBoxLayout, QLabel, QListWidget,
+    QListWidgetItem, QMainWindow, QPushButton, QSizePolicy,
+    QSlider, QSpacerItem, QSpinBox, QStatusBar,
+    QVBoxLayout, QWidget)
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
@@ -185,36 +185,48 @@ class Ui_MainWindow(object):
 
         self.grid_configs = QGridLayout()
         self.grid_configs.setObjectName(u"grid_configs")
-        self.check_old_roi = QCheckBox(self.frame_projects)
-        self.check_old_roi.setObjectName(u"check_old_roi")
-        self.check_old_roi.setEnabled(False)
+        self.label_checkpoint = QLabel(self.frame_projects)
+        self.label_checkpoint.setObjectName(u"label_checkpoint")
+        self.label_checkpoint.setEnabled(False)
 
-        self.grid_configs.addWidget(self.check_old_roi, 2, 0, 1, 1)
+        self.grid_configs.addWidget(self.label_checkpoint, 0, 0, 1, 1)
+
+        self.combo_checkpoint = QComboBox(self.frame_projects)
+        self.combo_checkpoint.setObjectName(u"combo_checkpoint")
+        self.combo_checkpoint.setEnabled(False)
+
+        self.grid_configs.addWidget(self.combo_checkpoint, 0, 1, 1, 1)
+
+        self.label_channel = QLabel(self.frame_projects)
+        self.label_channel.setObjectName(u"label_channel")
+        self.label_channel.setEnabled(False)
+
+        self.grid_configs.addWidget(self.label_channel, 1, 0, 1, 1)
 
         self.spin_channel = QSpinBox(self.frame_projects)
         self.spin_channel.setObjectName(u"spin_channel")
         self.spin_channel.setEnabled(False)
         self.spin_channel.setMaximum(20)
 
-        self.grid_configs.addWidget(self.spin_channel, 0, 1, 1, 1)
+        self.grid_configs.addWidget(self.spin_channel, 1, 1, 1, 1)
 
         self.check_stacked = QCheckBox(self.frame_projects)
         self.check_stacked.setObjectName(u"check_stacked")
         self.check_stacked.setEnabled(False)
 
-        self.grid_configs.addWidget(self.check_stacked, 1, 0, 1, 1)
+        self.grid_configs.addWidget(self.check_stacked, 2, 0, 1, 1)
 
-        self.label_channel = QLabel(self.frame_projects)
-        self.label_channel.setObjectName(u"label_channel")
-        self.label_channel.setEnabled(False)
+        self.check_old_roi = QCheckBox(self.frame_projects)
+        self.check_old_roi.setObjectName(u"check_old_roi")
+        self.check_old_roi.setEnabled(False)
 
-        self.grid_configs.addWidget(self.label_channel, 0, 0, 1, 1)
+        self.grid_configs.addWidget(self.check_old_roi, 3, 0, 1, 1)
 
         self.check_include_sd = QCheckBox(self.frame_projects)
         self.check_include_sd.setObjectName(u"check_include_sd")
         self.check_include_sd.setEnabled(False)
 
-        self.grid_configs.addWidget(self.check_include_sd, 3, 0, 1, 1)
+        self.grid_configs.addWidget(self.check_include_sd, 4, 0, 1, 1)
 
 
         self.grid_project.addLayout(self.grid_configs, 4, 0, 1, 2)
@@ -316,9 +328,10 @@ class Ui_MainWindow(object):
         self.label_projects.setText(QCoreApplication.translate("MainWindow", u"Projects:", None))
         self.button_remove_project.setText(QCoreApplication.translate("MainWindow", u"Remove", None))
         self.button_add_project.setText(QCoreApplication.translate("MainWindow", u"Add", None))
-        self.check_old_roi.setText(QCoreApplication.translate("MainWindow", u"Old ROI algorithm (AMAP)", None))
-        self.check_stacked.setText(QCoreApplication.translate("MainWindow", u"Stacked", None))
+        self.label_checkpoint.setText(QCoreApplication.translate("MainWindow", u"Model checkpoint:", None))
         self.label_channel.setText(QCoreApplication.translate("MainWindow", u"Target channel", None))
+        self.check_stacked.setText(QCoreApplication.translate("MainWindow", u"Stacked", None))
+        self.check_old_roi.setText(QCoreApplication.translate("MainWindow", u"Old ROI algorithm (AMAP)", None))
         self.check_include_sd.setText(QCoreApplication.translate("MainWindow", u"SD length analysis", None))
         self.label_results.setText(QCoreApplication.translate("MainWindow", u"Results:", None))
         self.button_result_segmentation.setText(QCoreApplication.translate("MainWindow", u"Segmentation", None))
