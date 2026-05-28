@@ -29,6 +29,8 @@ class PredictionDataset(Dataset):
 
         self.image_files = []
         self.per_img = []
+        self.steps_h = []
+        self.steps_w = []
 
         directory_content = os.listdir(_source_directory)
         directory_content = list(filter(lambda x: re.match(r'(.+).(tiff|tif)', x), directory_content))
@@ -37,9 +39,24 @@ class PredictionDataset(Dataset):
             sh = tifffile.imread(os.path.join(_source_directory, file_name)).shape
             res = get_tiff_resolution(os.path.join(_source_directory, file_name), sh[-1], _target_resolution)
             scale = round(res / self.target_resolution, 2)
-            sh = sh[-1] * scale
-            steps_per_axis = int((sh - _sample_dimension) // self.steps + 1)
-            self.per_img.append(steps_per_axis ** 2)
+            # Match the int(scale * dim) truncation that read_file applies via PIL.
+            h_scaled = int(scale * sh[-2])
+            w_scaled = int(scale * sh[-1])
+            # read_file zero-pads each axis up to at least the window size so
+            # every image yields at least one patch.
+            h_eff = max(h_scaled, _sample_dimension)
+            w_eff = max(w_scaled, _sample_dimension)
+            n_h = (h_eff - _sample_dimension) // self.steps + 1
+            n_w = (w_eff - _sample_dimension) // self.steps + 1
+            if h_scaled < _sample_dimension or w_scaled < _sample_dimension:
+                logging.warning(
+                    "%s: rescaled size %dx%d is smaller than the sliding window "
+                    "(%d). The image will be zero-padded to %dx%d before inference.",
+                    file_name, h_scaled, w_scaled, _sample_dimension,
+                    w_eff, h_eff)
+            self.steps_h.append(n_h)
+            self.steps_w.append(n_w)
+            self.per_img.append(n_h * n_w)
 
             if res == 1:
                 print(file_name)
@@ -92,6 +109,15 @@ class PredictionDataset(Dataset):
         img = img.astype(np.float32)
         img = img / np.max(img)
         img = np.expand_dims(img.astype(np.float32), 0)
+
+        # Zero-pad each axis up to at least the sliding window size so the
+        # dataloader can always extract a full (dimension x dimension) patch.
+        _, h_now, w_now = img.shape
+        pad_h = max(0, self.dimension - h_now)
+        pad_w = max(0, self.dimension - w_now)
+        if pad_h or pad_w:
+            img = np.pad(img, ((0, 0), (0, pad_h), (0, pad_w)), mode='constant')
+
         return img
 
     def image_shape_by_id(self, _image_id):
@@ -114,9 +140,9 @@ class PredictionDataset(Dataset):
             self.imgs[fn] = self.read_file(fn)
 
         d_img = self.imgs[fn].shape[1]
-        steps_per_axis = (d_img - self.dimension) // self.steps + 1
-        x = self.steps * (n // steps_per_axis)
-        y = self.steps * (n % steps_per_axis)
+        n_w = self.steps_w[file_i]
+        x = self.steps * (n // n_w)
+        y = self.steps * (n % n_w)
 
         img = self.imgs[fn][:, x:(x + self.dimension), y:(y + self.dimension)]
 

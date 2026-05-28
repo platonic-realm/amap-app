@@ -162,6 +162,8 @@ class MainWindow(QMainWindow):
         self.check_old_roi.stateChanged.connect(self.checkbox_old_roi_change)
         self.check_include_sd = self.findChild(QCheckBox, "check_include_sd")
         self.check_include_sd.toggled.connect(self.checkbox_include_sd_change)
+        self.check_use_gpu = self.findChild(QCheckBox, "check_use_gpu")
+        self.check_use_gpu.stateChanged.connect(self.checkbox_use_gpu_change)
 
         # Handling checkpoint combo box
         self.combo_checkpoint = self.findChild(QComboBox, "combo_checkpoint")
@@ -200,6 +202,9 @@ class MainWindow(QMainWindow):
         self.check_include_sd.setChecked(project_configs.get('does_include_sd', False))
         self.check_include_sd.setEnabled(True)
 
+        self.check_use_gpu.setChecked(project_configs.get('use_gpu', True))
+        self.check_use_gpu.setEnabled(True)
+
         checkpoint = project_configs.get('model_checkpoint', 'cp_10940.pth')
         idx = self.combo_checkpoint.findText(checkpoint)
         if idx >= 0:
@@ -219,6 +224,7 @@ class MainWindow(QMainWindow):
         self.check_stacked.setEnabled(not project_configs['is_morphometry_finished'])
         self.check_old_roi.setEnabled(not project_configs['is_morphometry_finished'])
         self.check_include_sd.setEnabled(not project_configs['is_morphometry_finished'])
+        self.check_use_gpu.setEnabled(not project_configs['is_morphometry_finished'])
         self.spin_channel.setEnabled(not project_configs['is_morphometry_finished'])
         self.combo_checkpoint.setEnabled(not project_configs['is_morphometry_finished'])
         self.button_stop.setEnabled(False)
@@ -256,6 +262,16 @@ class MainWindow(QMainWindow):
         project_configs_path = f'./{PROJECT_DIR}/{project_name}/conf.json'
         project_configs = self.load_project_configuration(project_configs_path)
         project_configs['is_old_roi'] = True if _value == 2 else False
+        self.save_project_configuration(project_configs_path, project_configs)
+
+    # Changes the GPU usage configuration for the selected project
+    def checkbox_use_gpu_change(self, _value):
+        if self.is_disabled or self.is_loading:
+            return
+        project_name = self.list_projects.currentItem().text()
+        project_configs_path = f'./{PROJECT_DIR}/{project_name}/conf.json'
+        project_configs = self.load_project_configuration(project_configs_path)
+        project_configs['use_gpu'] = True if _value == 2 else False
         self.save_project_configuration(project_configs_path, project_configs)
 
     # Populates the checkpoint combo box with available model files
@@ -409,6 +425,7 @@ class MainWindow(QMainWindow):
                         self.check_old_roi.setEnabled(False)
                         self.check_include_sd.setEnabled(False)
                         self.check_stacked.setEnabled(False)
+                        self.check_use_gpu.setEnabled(False)
                         self.spin_channel.setEnabled(False)
                     else:
                         self.button_start.setEnabled(True)
@@ -544,6 +561,7 @@ class MainWindow(QMainWindow):
             "is_morphometry_finished": False,
             "is_old_roi": False,
             "does_include_sd": False,
+            "use_gpu": True,
             "model_checkpoint": "cp_10940.pth"
         }
         self.save_project_configuration(f"{destination_directory}/conf.json", project_configuration)
@@ -584,6 +602,7 @@ class MainWindow(QMainWindow):
         self.check_stacked.setEnabled(False)
         self.check_old_roi.setEnabled(False)
         self.check_include_sd.setEnabled(False)
+        self.check_use_gpu.setEnabled(False)
         self.label_channel.setEnabled(False)
         self.combo_checkpoint.setEnabled(False)
         self.label_checkpoint.setEnabled(False)
@@ -622,6 +641,7 @@ class MainWindow(QMainWindow):
                 self.check_include_sd.isEnabled(),
                 self.combo_checkpoint.isEnabled(),
                 self.label_checkpoint.isEnabled(),
+                self.check_use_gpu.isEnabled(),
                 )
 
     def restore_UI_state(self, _UI_state):
@@ -649,6 +669,7 @@ class MainWindow(QMainWindow):
         self.button_results_morphometry.setEnabled(_UI_state[18]),
         self.combo_checkpoint.setEnabled(_UI_state[21])
         self.label_checkpoint.setEnabled(_UI_state[22])
+        self.check_use_gpu.setEnabled(_UI_state[23])
         self.is_loading = False
 
     def load_projects(self):

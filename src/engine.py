@@ -55,6 +55,7 @@ class AMAPEngine:
         self.is_stacked = _configs['is_stacked']
         self.target_channel = _configs['target_channel']
         self.model_checkpoint = _configs.get('model_checkpoint', 'cp_10940.pth')
+        self.use_gpu = _configs.get('use_gpu', True)
 
         # This variable is used to stop the engine
         self.proceed = mp.Value('i', 1)
@@ -124,6 +125,61 @@ class AMAPEngine:
 
         logging.info(f"Inference finished in: {int(hours):02d}:{int(minutes):02d}:{int(seconds):02d}.")
 
+    def _finalise_current_image(self):
+        if not self.patches:
+            return
+
+        filepath = self.dataset.image_files[self.image_id]
+
+        logging.info(f"Merging patches for the file: {filepath}")
+        self.merge_patches()
+
+        image_size = self.dataset.image_shape_by_id(self.image_id)[1:]
+        image_size = (2, *image_size)
+        # mask_img contains both sematic and instance segmentation results
+        mask_img = np.zeros(image_size)
+        mask_img[1] = self.semantic_mask
+
+        cc_mask = self.semantic_mask == SDLINE
+        self.semantic_mask[cc_mask] = BACKGROUND
+
+        logging.info("Applying CCL on the results.")
+        cc_number, cc_objects = cv2.connectedComponents(self.semantic_mask.astype(np.uint8))
+
+        self.remove_small_and_on_border(cc_number, cc_objects,
+                                        os.path.join(self.source_directory,
+                                                     filepath))
+        # self.fill_out_holes(cc_number, cc_objects)
+
+        mask_img[0] = cc_objects
+
+        npy_out_dir, _ = mkdirs(self.output_npy_directory, filepath)
+        sub_out_dir, fn_short = mkdirs(self.output_segmentation_directory, filepath)
+
+        numpy_file_path = os.path.join(npy_out_dir, "%s_pred.npy" % fn_short[:-4])
+        logging.info(f"Saving the results as numpy file: {numpy_file_path}")
+        np.save(numpy_file_path, mask_img)
+
+        result_file_path = os.path.join(sub_out_dir, "%s_pred.png" % fn_short[:-4])
+
+        roi_mask, _ = get_ROI_from_predictions(mask_img[1, :, :],
+                                               mask_img[1, :, :].shape,
+                                               self.configs['is_old_roi'])
+
+        min_area_threshold = 4000
+        contours, _ = cv2.findContours(roi_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        contours = [contour for contour in contours if cv2.contourArea(contour) > min_area_threshold]
+
+        logging.info(f"Ploting the segmentation results as: {result_file_path}")
+        plot_labels(self.dataset.read_file(filepath),
+                    cc_objects,
+                    mask_img[1],
+                    contours,
+                    cc_number,
+                    result_file_path)
+
+        self.patches.clear()
+
     def merge_patches(self):
         image_size = self.dataset.image_shape_by_id(self.image_id)[1:]
 
@@ -157,8 +213,11 @@ class AMAPEngine:
                           n_dim=self.embedding_dimensionality,
                           bilinear=True)
 
-        device = device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        logging.info("Moving the model to %s.", device)
+        cuda_available = torch.cuda.is_available()
+        device = torch.device("cuda" if (self.use_gpu and cuda_available) else "cpu")
+        logging.info(
+            "GPU toggle: %s, CUDA available: %s, using %s.",
+            self.use_gpu, cuda_available, device)
         unet_model.to(device)
         unet_model.eval()
 
@@ -202,72 +261,22 @@ class AMAPEngine:
                     with self.processed_tiles.get_lock():
                         self.processed_tiles.value += 1.0
 
-                    # To detect when we should merge patches of an image, we compare self.image_id with the
-                    # image_id of the patch, this work for all the images except for the last one
-                    # So, we should additionaly check for last patch as well.
-                    end_condition = (batch_i == len(loader)-1) and (index == len(semantic_predictions)-1)
                     offset = offsets[index]
 
-                    if offset[0] != self.image_id or end_condition:
-                        # In this case, the inference for an image is finished,
-                        # and we apply the CCL algorithm and store the result as a numpy file
-                        # for morphometry engine to use
-                        filepath = self.dataset.image_files[self.image_id]
-
-                        logging.info(f"Merging patches for the file: {filepath}")
-                        self.merge_patches()
-
-                        image_size = self.dataset.image_shape_by_id(self.image_id)[1:]
-                        image_size = (2, *image_size)
-                        # mask_img contains both sematic and instance segmentation results
-                        mask_img = np.zeros(image_size)
-                        mask_img[1] = self.semantic_mask
-
-                        cc_mask = self.semantic_mask == SDLINE
-                        self.semantic_mask[cc_mask] = BACKGROUND
-
-                        logging.info("Applying CCL on the results.")
-                        cc_number, cc_objects = cv2.connectedComponents(self.semantic_mask.astype(np.uint8))
-
-                        self.remove_small_and_on_border(cc_number, cc_objects,
-                                                        os.path.join(self.source_directory,
-                                                                     filepath))
-                        # self.fill_out_holes(cc_number, cc_objects)
-
-                        mask_img[0] = cc_objects
-
-                        npy_out_dir, _ = mkdirs(self.output_npy_directory, filepath)
-                        sub_out_dir, fn_short = mkdirs(self.output_segmentation_directory, filepath)
-
-                        numpy_file_path = os.path.join(npy_out_dir, "%s_pred.npy" % fn_short[:-4])
-                        logging.info(f"Saving the results as numpy file: {numpy_file_path}")
-                        np.save(numpy_file_path, mask_img)
-
-                        result_file_path = os.path.join(sub_out_dir, "%s_pred.png" % fn_short[:-4])
-
-                        roi_mask, _ = get_ROI_from_predictions(mask_img[1, :, :],
-                                                               mask_img[1, :, :].shape,
-                                                               self.configs['is_old_roi'])
-
-                        min_area_threshold = 4000
-                        contours, _ = cv2.findContours(roi_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-                        contours = [contour for contour in contours if cv2.contourArea(contour) > min_area_threshold]
-
-                        logging.info(f"Ploting the segmentation results as: {result_file_path}")
-                        plot_labels(self.dataset.read_file(filepath),
-                                    cc_objects,
-                                    mask_img[1],
-                                    contours,
-                                    cc_number,
-                                    result_file_path)
-
-                        self.patches.clear()
+                    # Whenever the batch crosses into a new image, finalise the
+                    # previous one before accumulating patches for the new one.
+                    if offset[0] != self.image_id:
+                        self._finalise_current_image()
                         self.image_id = offset[0]
 
-                    # Here we add the patch to list of procesed patches
                     self.patches.append((offsets[index], np.argmax(semantic_predictions.cpu()[index], axis=0)))
 
                 logging.debug(f"Inference of the batch no: {batch_i} finished.")
+
+            # The loader is exhausted — finalise the patches accumulated for
+            # the last image (they would otherwise sit in self.patches forever).
+            if self.shall_proceed() and self.patches:
+                self._finalise_current_image()
 
             if self.shall_proceed():
                 self.configs['is_segmentation_finished'] = True
