@@ -222,9 +222,9 @@ def fill_with_colors(_image, _mask, ncomp, cols):
         rgb = list(colorsys.hsv_to_rgb(cols[nc - 1], 0.75, 1))
         rgb.append(0.5)
         xs, ys = np.where(_mask == nc)
-
-        for i in range(xs.size):
-            _image[xs[i], ys[i], :] = rgb
+        # Colour all pixels of this component at once; rgb broadcasts across
+        # the (N, 4) selection. Equivalent to the old per-pixel loop.
+        _image[xs, ys, :] = rgb
     return _image
 
 
