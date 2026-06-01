@@ -227,7 +227,7 @@ class AMAPEngine:
                             num_workers=self.num_workers,
                             pin_memory=True)
 
-        with torch.no_grad():
+        with torch.inference_mode():
             # The dataset holds the patches for all the images in the project
             # but it is not randomized, so we are going through the images, while
             # we got through the patches, and the order of patches is the same as images
@@ -358,16 +358,19 @@ class AMAPEngine:
              np.unique(_image[:, -1]),
              np.unique(_image[-1, :])]))
         on_border = on_border[on_border != 0]
-        for i in on_border:
-            _image[_image == i] = 0
+        if on_border.size:
+            _image[np.isin(_image, on_border)] = 0
 
         # res = get_resolution(_file_path, _image.shape[1])
         # min_pix = 0.1 / (res ** 2)
         # logging.info(f"Removing objects smaller than {min_pix} pixels.")
-        for i in range(1, _cc_number):
-            is_i = _image == i
-            if np.sum(is_i) < self.MIN_PIXELS:
-                _image[_image == i] = 0
+        # Count every label in one pass and zero out the components smaller than
+        # MIN_PIXELS via a label->keep lookup, instead of an O(components x size)
+        # scan per label. Equivalent to the old per-label loop.
+        sizes = np.bincount(_image.ravel())
+        remove = sizes < self.MIN_PIXELS
+        remove[0] = False  # never remove the background label
+        _image[remove[_image]] = 0
 
     # Converts self.proceed to bool
     def shall_proceed(self) -> bool:
