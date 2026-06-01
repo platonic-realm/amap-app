@@ -129,7 +129,9 @@ class PredictionDataset(Dataset):
 
     def __getitem__(self, i):
 
-        file_i = np.min(np.where(self.per_img_cumsum > i)[0])
+        # First image whose cumulative patch count exceeds i. Equivalent to
+        # np.min(np.where(self.per_img_cumsum > i)[0]) on the increasing cumsum.
+        file_i = int(np.searchsorted(self.per_img_cumsum, i, side='right'))
 
         n = i
         if file_i > 0:
