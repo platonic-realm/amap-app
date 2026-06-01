@@ -9,7 +9,6 @@ import cv2
 import numpy as np
 import psutil
 import torch
-import torch.nn.functional as fn
 from torch.utils.data import DataLoader
 import torch.multiprocessing as mp
 
@@ -83,7 +82,6 @@ class AMAPEngine:
         self.image_id = 0
         self.patches = []
         self.semantic_mask = None
-        self.instance_mask = None
         self.processed_tiles = mp.Value('d', 0.0)
 
         if not os.path.exists(self.output_segmentation_directory):
@@ -185,17 +183,11 @@ class AMAPEngine:
         image_size = self.dataset.image_shape_by_id(self.image_id)[1:]
 
         self.semantic_mask = np.zeros(image_size, dtype=int)
-        self.instance_mask = np.zeros(image_size, dtype=int)
         for offset, patch in self.patches:
             id,  x, y, _ = offset
-            patch_mask = self.semantic_mask[x:(x + patch.shape[0]), y:(y + patch.shape[1])]
-            # merge semantic segm - maximum of class
-            patch_mask = np.max(
-                np.append(np.expand_dims(patch_mask, 0),
-                          np.expand_dims(patch, 0),
-                          axis=0),
-                axis=0)
-            self.semantic_mask[x:(x + patch.shape[0]), y:(y + patch.shape[1])] = patch_mask
+            region = self.semantic_mask[x:(x + patch.shape[0]), y:(y + patch.shape[1])]
+            # Where patches overlap, keep the higher-priority class per pixel.
+            np.maximum(region, patch, out=region)
 
     def inference_procedure(self):
 
@@ -251,14 +243,18 @@ class AMAPEngine:
                 images = images.to(device)
                 # The inferene happens here
                 semantic_predictions, _ = unet_model(images)
-                semantic_predictions = fn.softmax(semantic_predictions, dim=1)
+                # argmax is invariant under softmax, so we skip the softmax and
+                # pick the winning class per pixel on-device. Moving the small
+                # [B, H, W] integer labels to the host once per batch is far
+                # cheaper than copying the full [B, C, H, W] tensor per patch.
+                batch_labels = torch.argmax(semantic_predictions, dim=1).cpu().numpy()
 
                 # Here we go through the patches in the batch and decide if it contain the
                 # last patch of an image or not. If yes, we merge the patches
                 # and if no, we store the result for future merging.
-                for index, prediction in enumerate(semantic_predictions):
+                for index in range(batch_labels.shape[0]):
 
-                    # The code is multio threaded, we need a locking mechanism for share resources
+                    # Inference runs in a worker thread, so guard the shared counter.
                     with self.processed_tiles.get_lock():
                         self.processed_tiles.value += 1.0
 
@@ -270,7 +266,7 @@ class AMAPEngine:
                         self._finalise_current_image()
                         self.image_id = offset[0]
 
-                    self.patches.append((offsets[index], np.argmax(semantic_predictions.cpu()[index], axis=0)))
+                    self.patches.append((offsets[index], batch_labels[index]))
 
                 logging.debug(f"Inference of the batch no: {batch_i} finished.")
 
