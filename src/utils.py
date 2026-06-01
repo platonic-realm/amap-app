@@ -89,15 +89,9 @@ def execute_shell_command(_command):
 
 
 def get_resolution(tif_fl, sh):
-    TARGET_RES = 0.022724609375
-    tif = tifffile.TiffFile(tif_fl)
-    if "XResolution" in tif.pages[0].tags:
-        x1, x2 = tif.pages[0].tags["XResolution"].value
-        if tif.pages[0].tags["ResolutionUnit"].value == 3:  # RESUNIT.CENTIMETER
-            x2 = x2 * 10000
-        return (x2 / x1) * (tif.pages[0].shape[0] / sh)
-    else:
-        return TARGET_RES
+    # Same computation as get_tiff_resolution, using the default target
+    # resolution as the fallback when the TIFF has no XResolution tag.
+    return get_tiff_resolution(tif_fl, sh, 0.022724609375)
 
 
 def get_tiff_resolution(_tiff_file, _shape, _target_resolution):
