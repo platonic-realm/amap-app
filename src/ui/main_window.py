@@ -8,6 +8,7 @@ import uuid
 import threading as tr
 
 # Library Imports
+import psutil
 from PySide6 import QtCore
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap, QFont, QIcon
@@ -19,7 +20,8 @@ from src.configs import PROJECT_DIR, HEADER_IMAGE, APP_ICON
 from src.engine import AMAPEngine
 from src.morph import AMAPMorphometry
 from src.ui.ui_mainwindow import Ui_MainWindow
-from src.utils import filter_tiff_files, analyze_tiff_files, create_progress_dialog, create_message_box,     open_dir_in_browser
+from src.utils import filter_tiff_files, analyze_tiff_files, create_progress_dialog, create_message_box, \
+    open_dir_in_browser, cpu_threads_from_level, cpu_percent_from_level, batch_size_from_level, suggested_workers
 
 
 class MainWindow(QMainWindow):
@@ -35,6 +37,15 @@ class MainWindow(QMainWindow):
         # Prevents double trigger of the timer
         self.is_triggered = False
         self.timer_time_out = 1000
+
+        # Number of logical cores on this machine. Used to map the abstract
+        # CPU/Mem allocation levels onto concrete values.
+        self.cpu_count = psutil.cpu_count()
+        # Upper bound for the data-loader workers slider. Capped at half the
+        # logical cores: the worker processes compete with the PyTorch inference
+        # threads for cores, so allowing the full count would oversubscribe the
+        # CPU and inflate prefetch memory.
+        self.max_workers = max(1, self.cpu_count // 2)
 
         # Will be instantiated when start button is clicked
         self.engine = None
@@ -63,12 +74,21 @@ class MainWindow(QMainWindow):
         self.slider_cpu = None
         # This is a QSlider for clustering precision configuration
         self.slider_mem = None
+        # This is a QSlider for the number of data-loader workers. Its value is
+        # derived from the CPU/Mem sliders but can be overridden by the user.
+        self.slider_workers = None
 
         # We need to access these labels later
         self.label_cpu_alloc = None
         self.label_mem_alloc = None
         self.label_channel = None
         self.label_results = None
+        self.label_workers = None
+        # Smaller-font labels below each slider that show the computed value
+        # (CPU percent/threads, batch size, worker count).
+        self.label_cpu_value = None
+        self.label_mem_value = None
+        self.label_workers_value = None
 
         # Start, Stop & Results buttons
         self.button_start = None
@@ -155,6 +175,26 @@ class MainWindow(QMainWindow):
         self.slider_mem = self.findChild(QSlider, "slider_mem_allocation")
         self.slider_mem.valueChanged.connect(self.slider_mem_allocation_change)
 
+        # Handling data-loader workers slider changes. The slider is an absolute
+        # count, capped at half the logical cores (see self.max_workers).
+        self.slider_workers = self.findChild(QSlider, "slider_workers")
+        self.slider_workers.setMaximum(self.max_workers)
+        self.slider_workers.valueChanged.connect(self.slider_workers_change)
+        self.label_workers = self.findChild(QLabel, "label_workers")
+        self.label_workers.setFont(QFont("Times", 14))
+
+        # The smaller-font value labels sit beneath each slider and display the
+        # concrete value the slider maps to. They are updated by the _refresh_*
+        # helpers, not edited by the user.
+        value_font = QFont("Times", 10)
+        value_font.setItalic(True)
+        self.label_cpu_value = self.findChild(QLabel, "label_cpu_value")
+        self.label_cpu_value.setFont(value_font)
+        self.label_mem_value = self.findChild(QLabel, "label_mem_value")
+        self.label_mem_value.setFont(value_font)
+        self.label_workers_value = self.findChild(QLabel, "label_workers_value")
+        self.label_workers_value.setFont(value_font)
+
         # Handling stacked checkbox changes
         self.check_stacked = self.findChild(QCheckBox, "check_stacked")
         self.check_stacked.stateChanged.connect(self.checkbox_stack_change)
@@ -193,6 +233,23 @@ class MainWindow(QMainWindow):
         self.slider_mem.setEnabled(True)
         self.label_mem_alloc.setEnabled(True)
 
+        # Legacy projects predate the workers slider: derive a sensible default
+        # from their CPU/Mem levels, bounded by this machine's worker cap.
+        workers = project_configs.get(
+            'num_workers',
+            suggested_workers(project_configs['cpu_allocation'],
+                              project_configs['mem_allocation'],
+                              self.max_workers))
+        self.slider_workers.setValue(workers)
+        self.slider_workers.setEnabled(True)
+        self.label_workers.setEnabled(True)
+
+        # Reflect the freshly loaded slider values in the value labels.
+        self._refresh_cpu_label()
+        self._refresh_mem_label()
+        self._refresh_workers_label()
+        self._sync_value_label_states()
+
         self.spin_channel.setValue(project_configs['target_channel'])
         self.spin_channel.setEnabled(True)
 
@@ -227,6 +284,7 @@ class MainWindow(QMainWindow):
         self.check_use_gpu.setEnabled(not project_configs['is_morphometry_finished'])
         self.spin_channel.setEnabled(not project_configs['is_morphometry_finished'])
         self.combo_checkpoint.setEnabled(not project_configs['is_morphometry_finished'])
+        self.slider_workers.setEnabled(not project_configs['is_morphometry_finished'])
         self.button_stop.setEnabled(False)
 
         self.button_remove_project.setEnabled(True)
@@ -335,6 +393,10 @@ class MainWindow(QMainWindow):
         project_configs = self.load_project_configuration(project_configs_path)
         project_configs['cpu_allocation'] = _value
         self.save_project_configuration(project_configs_path, project_configs)
+        self._refresh_cpu_label()
+        # One-way link: re-derive the workers suggestion from the (now saved)
+        # CPU level and the current Mem level, and push it onto the workers slider.
+        self._apply_suggested_workers(_value, self.slider_mem.value())
 
     # Changes the precision configuration for the selected project
     def slider_mem_allocation_change(self, _value):
@@ -345,6 +407,54 @@ class MainWindow(QMainWindow):
         project_configs = self.load_project_configuration(project_configs_path)
         project_configs['mem_allocation'] = _value
         self.save_project_configuration(project_configs_path, project_configs)
+        self._refresh_mem_label()
+        # One-way link: re-derive the workers suggestion from the current CPU
+        # level and the (now saved) Mem level.
+        self._apply_suggested_workers(self.slider_cpu.value(), _value)
+
+    # Changes the data-loader workers configuration for the selected project.
+    # This is the user-facing override of the CPU/Mem-derived suggestion and
+    # deliberately does NOT touch the CPU/Mem sliders (one-way link).
+    def slider_workers_change(self, _value):
+        if self.is_disabled or self.is_loading:
+            return
+        project_name = self.list_projects.currentItem().text()
+        project_configs_path = f'./{PROJECT_DIR}/{project_name}/conf.json'
+        project_configs = self.load_project_configuration(project_configs_path)
+        project_configs['num_workers'] = _value
+        self.save_project_configuration(project_configs_path, project_configs)
+        self._refresh_workers_label()
+
+    # Pushes the CPU/Mem-derived worker suggestion onto the workers slider.
+    # setValue fires slider_workers_change (which persists num_workers); the
+    # explicit label refresh covers the case where the value is unchanged and
+    # the signal does not fire.
+    def _apply_suggested_workers(self, _cpu_level, _mem_level):
+        self.slider_workers.setValue(suggested_workers(_cpu_level, _mem_level, self.max_workers))
+        self._refresh_workers_label()
+
+    # The small value labels below each slider show the concrete value the
+    # slider maps to. They read straight from the sliders so they are safe to
+    # call during load. The title labels above stay as fixed captions.
+    def _refresh_cpu_label(self):
+        level = self.slider_cpu.value()
+        self.label_cpu_value.setText(
+            "%d%% · %d threads" % (
+                cpu_percent_from_level(level),
+                cpu_threads_from_level(level, self.cpu_count)))
+
+    def _refresh_mem_label(self):
+        self.label_mem_value.setText(
+            "batch size %d" % batch_size_from_level(self.slider_mem.value()))
+
+    def _refresh_workers_label(self):
+        self.label_workers_value.setText("%d workers" % self.slider_workers.value())
+
+    # Keep each value label greyed/enabled in step with its slider.
+    def _sync_value_label_states(self):
+        self.label_cpu_value.setEnabled(self.slider_cpu.isEnabled())
+        self.label_mem_value.setEnabled(self.slider_mem.isEnabled())
+        self.label_workers_value.setEnabled(self.slider_workers.isEnabled())
 
     def stop_project_click(self):
         self.button_stop.setEnabled(False)
@@ -427,6 +537,8 @@ class MainWindow(QMainWindow):
                         self.check_stacked.setEnabled(False)
                         self.check_use_gpu.setEnabled(False)
                         self.spin_channel.setEnabled(False)
+                        self.slider_workers.setEnabled(False)
+                        self._sync_value_label_states()
                     else:
                         self.button_start.setEnabled(True)
 
@@ -551,7 +663,7 @@ class MainWindow(QMainWindow):
             "npy_dir": f"./{PROJECT_DIR}/{selected_path.name}/npy/",
             "result_segmentation_dir": f"./{PROJECT_DIR}/{selected_path.name}/segmentation/",
             "result_morphometry_dir": f"./{PROJECT_DIR}/{selected_path.name}/morphometry/",
-            "cpu_allocation": 5,
+            "cpu_allocation": 4,
             "mem_allocation": 2,
             "target_channel": 0,
             "batch_size": 8,
@@ -562,7 +674,8 @@ class MainWindow(QMainWindow):
             "is_old_roi": False,
             "does_include_sd": False,
             "use_gpu": True,
-            "model_checkpoint": "cp_10940.pth"
+            "model_checkpoint": "cp_10940.pth",
+            "num_workers": suggested_workers(4, 2, self.max_workers)
         }
         self.save_project_configuration(f"{destination_directory}/conf.json", project_configuration)
         self.load_projects()
@@ -598,6 +711,8 @@ class MainWindow(QMainWindow):
         self.label_cpu_alloc.setEnabled(False)
         self.slider_mem.setEnabled(False)
         self.label_mem_alloc.setEnabled(False)
+        self.slider_workers.setEnabled(False)
+        self.label_workers.setEnabled(False)
         self.spin_channel.setEnabled(False)
         self.check_stacked.setEnabled(False)
         self.check_old_roi.setEnabled(False)
@@ -616,6 +731,12 @@ class MainWindow(QMainWindow):
 
         self.slider_cpu.setValue(0)
         self.slider_mem.setValue(0)
+        self.slider_workers.setValue(0)
+        # Clear the value labels so a deselected project shows no stale numbers.
+        self.label_cpu_value.clear()
+        self.label_mem_value.clear()
+        self.label_workers_value.clear()
+        self._sync_value_label_states()
 
     def save_UI_state(self):
         return (self.slider_cpu.isEnabled(),
@@ -642,6 +763,9 @@ class MainWindow(QMainWindow):
                 self.combo_checkpoint.isEnabled(),
                 self.label_checkpoint.isEnabled(),
                 self.check_use_gpu.isEnabled(),
+                self.slider_workers.isEnabled(),
+                self.slider_workers.value(),
+                self.label_workers.isEnabled(),
                 )
 
     def restore_UI_state(self, _UI_state):
@@ -670,6 +794,10 @@ class MainWindow(QMainWindow):
         self.combo_checkpoint.setEnabled(_UI_state[21])
         self.label_checkpoint.setEnabled(_UI_state[22])
         self.check_use_gpu.setEnabled(_UI_state[23])
+        self.slider_workers.setEnabled(_UI_state[24])
+        self.slider_workers.setValue(_UI_state[25])
+        self.label_workers.setEnabled(_UI_state[26])
+        self._sync_value_label_states()
         self.is_loading = False
 
     def load_projects(self):

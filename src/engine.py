@@ -18,7 +18,7 @@ from src.nn.dataset import PredictionDataset
 from src.nn.unet import UNet
 from src.utils import mkdirs, plot_labels
 from src.configs import LOG_START_PROC_SIGNATURE
-from src.utils import get_ROI_from_predictions, get_resolution
+from src.utils import get_ROI_from_predictions, get_resolution, cpu_threads_from_level
 
 
 # Labels of the model output
@@ -56,6 +56,7 @@ class AMAPEngine:
         self.target_channel = _configs['target_channel']
         self.model_checkpoint = _configs.get('model_checkpoint', 'cp_10940.pth')
         self.use_gpu = _configs.get('use_gpu', True)
+        self.num_workers = _configs.get('num_workers', 4)
 
         # This variable is used to stop the engine
         self.proceed = mp.Value('i', 1)
@@ -66,7 +67,7 @@ class AMAPEngine:
 
         # Set number of threads for PyTorch engine
         # https://pytorch.org/docs/stable/torch.html#torch.set_num_threads
-        threads_num = max(1, int((self.cpu_alloc_value-1) / 4 * self.cpu_count))
+        threads_num = cpu_threads_from_level(self.cpu_alloc_value, self.cpu_count)
         logging.info("Using %d logical cores.", threads_num)
         torch.set_num_threads(threads_num)
 
@@ -231,7 +232,7 @@ class AMAPEngine:
                             batch_size=self.batch_size,
                             # It's important to turn off shuffle
                             shuffle=False,
-                            num_workers=4,
+                            num_workers=self.num_workers,
                             pin_memory=True)
 
         with torch.no_grad():

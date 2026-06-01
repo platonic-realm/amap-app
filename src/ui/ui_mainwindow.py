@@ -161,6 +161,9 @@ class Ui_MainWindow(object):
         self.grid_project = QGridLayout()
         self.grid_project.setSpacing(6)
         self.grid_project.setObjectName(u"grid_project")
+        # CPU group: the slider sits in columns 1-4 (top-aligned so it lines up
+        # with the title), while column 0 stacks the title above its small value
+        # label.
         self.slider_cpu_allocation = QSlider(self.frame_projects)
         self.slider_cpu_allocation.setObjectName(u"slider_cpu_allocation")
         self.slider_cpu_allocation.setEnabled(False)
@@ -170,7 +173,22 @@ class Ui_MainWindow(object):
         self.slider_cpu_allocation.setOrientation(Qt.Orientation.Horizontal)
         self.slider_cpu_allocation.setTickPosition(QSlider.TickPosition.TicksBothSides)
 
-        self.grid_project.addWidget(self.slider_cpu_allocation, 0, 1, 1, 4)
+        self.grid_project.addWidget(self.slider_cpu_allocation, 0, 1, 1, 4, Qt.AlignmentFlag.AlignTop)
+
+        self.label_cpu_allocation = QLabel(self.frame_projects)
+        self.label_cpu_allocation.setObjectName(u"label_cpu_allocation")
+        self.label_cpu_allocation.setEnabled(False)
+        self.label_cpu_value = QLabel(self.frame_projects)
+        self.label_cpu_value.setObjectName(u"label_cpu_value")
+        self.label_cpu_value.setEnabled(False)
+        self.vbox_cpu_label = QVBoxLayout()
+        self.vbox_cpu_label.setObjectName(u"vbox_cpu_label")
+        self.vbox_cpu_label.setSpacing(0)
+        self.vbox_cpu_label.addWidget(self.label_cpu_allocation)
+        self.vbox_cpu_label.addWidget(self.label_cpu_value)
+        self.vbox_cpu_label.addStretch(1)
+
+        self.grid_project.addLayout(self.vbox_cpu_label, 0, 0, 1, 1)
 
         self.slider_mem_allocation = QSlider(self.frame_projects)
         self.slider_mem_allocation.setObjectName(u"slider_mem_allocation")
@@ -181,7 +199,48 @@ class Ui_MainWindow(object):
         self.slider_mem_allocation.setOrientation(Qt.Orientation.Horizontal)
         self.slider_mem_allocation.setTickPosition(QSlider.TickPosition.TicksBothSides)
 
-        self.grid_project.addWidget(self.slider_mem_allocation, 2, 1, 1, 4)
+        self.grid_project.addWidget(self.slider_mem_allocation, 2, 1, 1, 4, Qt.AlignmentFlag.AlignTop)
+
+        self.label_mem_allocation = QLabel(self.frame_projects)
+        self.label_mem_allocation.setObjectName(u"label_mem_allocation")
+        self.label_mem_allocation.setEnabled(False)
+        self.label_mem_value = QLabel(self.frame_projects)
+        self.label_mem_value.setObjectName(u"label_mem_value")
+        self.label_mem_value.setEnabled(False)
+        self.vbox_mem_label = QVBoxLayout()
+        self.vbox_mem_label.setObjectName(u"vbox_mem_label")
+        self.vbox_mem_label.setSpacing(0)
+        self.vbox_mem_label.addWidget(self.label_mem_allocation)
+        self.vbox_mem_label.addWidget(self.label_mem_value)
+        self.vbox_mem_label.addStretch(1)
+
+        self.grid_project.addLayout(self.vbox_mem_label, 2, 0, 1, 1)
+
+        self.slider_workers = QSlider(self.frame_projects)
+        self.slider_workers.setObjectName(u"slider_workers")
+        self.slider_workers.setEnabled(False)
+        self.slider_workers.setMaximum(4)
+        self.slider_workers.setValue(0)
+        self.slider_workers.setSliderPosition(0)
+        self.slider_workers.setOrientation(Qt.Orientation.Horizontal)
+        self.slider_workers.setTickPosition(QSlider.TickPosition.TicksBothSides)
+
+        self.grid_project.addWidget(self.slider_workers, 3, 1, 1, 4, Qt.AlignmentFlag.AlignTop)
+
+        self.label_workers = QLabel(self.frame_projects)
+        self.label_workers.setObjectName(u"label_workers")
+        self.label_workers.setEnabled(False)
+        self.label_workers_value = QLabel(self.frame_projects)
+        self.label_workers_value.setObjectName(u"label_workers_value")
+        self.label_workers_value.setEnabled(False)
+        self.vbox_workers_label = QVBoxLayout()
+        self.vbox_workers_label.setObjectName(u"vbox_workers_label")
+        self.vbox_workers_label.setSpacing(0)
+        self.vbox_workers_label.addWidget(self.label_workers)
+        self.vbox_workers_label.addWidget(self.label_workers_value)
+        self.vbox_workers_label.addStretch(1)
+
+        self.grid_project.addLayout(self.vbox_workers_label, 3, 0, 1, 1)
 
         self.grid_configs = QGridLayout()
         self.grid_configs.setObjectName(u"grid_configs")
@@ -236,7 +295,7 @@ class Ui_MainWindow(object):
         self.grid_configs.addWidget(self.check_use_gpu, 5, 0, 1, 1)
 
 
-        self.grid_project.addLayout(self.grid_configs, 4, 0, 1, 2)
+        self.grid_project.addLayout(self.grid_configs, 5, 0, 1, 2)
 
         self.horizontal_result = QHBoxLayout()
         self.horizontal_result.setObjectName(u"horizontal_result")
@@ -264,13 +323,7 @@ class Ui_MainWindow(object):
         self.horizontal_result.addItem(self.horizontalSpacer_2)
 
 
-        self.grid_project.addLayout(self.horizontal_result, 3, 0, 1, 5)
-
-        self.label_cpu_allocation = QLabel(self.frame_projects)
-        self.label_cpu_allocation.setObjectName(u"label_cpu_allocation")
-        self.label_cpu_allocation.setEnabled(False)
-
-        self.grid_project.addWidget(self.label_cpu_allocation, 0, 0, 1, 1)
+        self.grid_project.addLayout(self.horizontal_result, 4, 0, 1, 5)
 
         self.horizontal_stop_start = QHBoxLayout()
         self.horizontal_stop_start.setObjectName(u"horizontal_stop_start")
@@ -291,17 +344,11 @@ class Ui_MainWindow(object):
         self.horizontal_stop_start.addWidget(self.button_start)
 
 
-        self.grid_project.addLayout(self.horizontal_stop_start, 5, 2, 1, 1)
-
-        self.label_mem_allocation = QLabel(self.frame_projects)
-        self.label_mem_allocation.setObjectName(u"label_mem_allocation")
-        self.label_mem_allocation.setEnabled(False)
-
-        self.grid_project.addWidget(self.label_mem_allocation, 2, 0, 1, 1)
+        self.grid_project.addLayout(self.horizontal_stop_start, 6, 2, 1, 1)
 
         self.horizontalSpacer = QSpacerItem(30, 20, QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Minimum)
 
-        self.grid_project.addItem(self.horizontalSpacer, 4, 2, 1, 1)
+        self.grid_project.addItem(self.horizontalSpacer, 5, 2, 1, 1)
 
 
         self.horizontalLayout_4.addLayout(self.grid_project)
@@ -348,5 +395,6 @@ class Ui_MainWindow(object):
         self.button_stop.setText(QCoreApplication.translate("MainWindow", u"Stop", None))
         self.button_start.setText(QCoreApplication.translate("MainWindow", u"Start", None))
         self.label_mem_allocation.setText(QCoreApplication.translate("MainWindow", u"Memory allocation:", None))
+        self.label_workers.setText(QCoreApplication.translate("MainWindow", u"Data-loader workers:", None))
     # retranslateUi
 

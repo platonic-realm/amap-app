@@ -41,6 +41,33 @@ def create_projects_dir():
         os.mkdir(f"./{PROJECT_DIR}")
 
 
+# The resource sliders are 0-4 "allocation level" sliders. These helpers are the
+# single source of truth for translating a level into the actual values used by
+# the engine (thread count, batch size) and shown in the UI labels, so the two
+# can never drift apart.
+def cpu_threads_from_level(_level, _cores):
+    # Level 0..4 maps to 20%..100% of the available cores. Clamp to [1, cores]
+    # so legacy configs (e.g. cpu_allocation == 5) cannot exceed the core count.
+    return max(1, min(_cores, round((_level + 1) / 5 * _cores)))
+
+
+def cpu_percent_from_level(_level):
+    return round((_level + 1) / 5 * 100)
+
+
+def batch_size_from_level(_level, _base=8):
+    return _base * (_level + 1)
+
+
+def suggested_workers(_cpu_level, _mem_level, _max_workers):
+    # Derive a sensible DataLoader worker count from the CPU and Mem levels,
+    # scaled into [0, _max_workers]. More workers means more prefetch RAM, so
+    # the memory level acts as a ceiling.
+    suggested = round((_cpu_level + 1) / 5 * _max_workers)
+    mem_ceiling = round((_mem_level + 1) / 5 * _max_workers)
+    return max(0, min(suggested, mem_ceiling, _max_workers))
+
+
 def mkdirs(_target_directory, _path):
     t = _path.split("/")
     for i, sub_dir in enumerate(t[:-1]):

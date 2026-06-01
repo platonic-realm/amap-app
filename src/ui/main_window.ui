@@ -184,7 +184,47 @@
             <property name="spacing">
              <number>6</number>
             </property>
-            <item row="0" column="1" colspan="4">
+            <item row="0" column="0">
+             <layout class="QVBoxLayout" name="vbox_cpu_label">
+              <property name="spacing">
+               <number>0</number>
+              </property>
+              <item>
+               <widget class="QLabel" name="label_cpu_allocation">
+                <property name="enabled">
+                 <bool>false</bool>
+                </property>
+                <property name="text">
+                 <string>CPU allocation:</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QLabel" name="label_cpu_value">
+                <property name="enabled">
+                 <bool>false</bool>
+                </property>
+                <property name="text">
+                 <string/>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <spacer name="spacer_cpu_label">
+                <property name="orientation">
+                 <enum>Qt::Orientation::Vertical</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>0</width>
+                  <height>0</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+             </layout>
+            </item>
+            <item row="0" column="1" colspan="4" alignment="Qt::AlignTop">
              <widget class="QSlider" name="slider_cpu_allocation">
               <property name="enabled">
                <bool>false</bool>
@@ -206,7 +246,47 @@
               </property>
              </widget>
             </item>
-            <item row="2" column="1" colspan="4">
+            <item row="2" column="0">
+             <layout class="QVBoxLayout" name="vbox_mem_label">
+              <property name="spacing">
+               <number>0</number>
+              </property>
+              <item>
+               <widget class="QLabel" name="label_mem_allocation">
+                <property name="enabled">
+                 <bool>false</bool>
+                </property>
+                <property name="text">
+                 <string>Memory allocation:</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QLabel" name="label_mem_value">
+                <property name="enabled">
+                 <bool>false</bool>
+                </property>
+                <property name="text">
+                 <string/>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <spacer name="spacer_mem_label">
+                <property name="orientation">
+                 <enum>Qt::Orientation::Vertical</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>0</width>
+                  <height>0</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+             </layout>
+            </item>
+            <item row="2" column="1" colspan="4" alignment="Qt::AlignTop">
              <widget class="QSlider" name="slider_mem_allocation">
               <property name="enabled">
                <bool>false</bool>
@@ -228,7 +308,69 @@
               </property>
              </widget>
             </item>
-             <item row="4" column="0" colspan="2">
+            <item row="3" column="0">
+             <layout class="QVBoxLayout" name="vbox_workers_label">
+              <property name="spacing">
+               <number>0</number>
+              </property>
+              <item>
+               <widget class="QLabel" name="label_workers">
+                <property name="enabled">
+                 <bool>false</bool>
+                </property>
+                <property name="text">
+                 <string>Data-loader workers:</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QLabel" name="label_workers_value">
+                <property name="enabled">
+                 <bool>false</bool>
+                </property>
+                <property name="text">
+                 <string/>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <spacer name="spacer_workers_label">
+                <property name="orientation">
+                 <enum>Qt::Orientation::Vertical</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>0</width>
+                  <height>0</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+             </layout>
+            </item>
+            <item row="3" column="1" colspan="4" alignment="Qt::AlignTop">
+             <widget class="QSlider" name="slider_workers">
+              <property name="enabled">
+               <bool>false</bool>
+              </property>
+              <property name="maximum">
+               <number>4</number>
+              </property>
+              <property name="value">
+               <number>0</number>
+              </property>
+              <property name="sliderPosition">
+               <number>0</number>
+              </property>
+              <property name="orientation">
+               <enum>Qt::Orientation::Horizontal</enum>
+              </property>
+              <property name="tickPosition">
+               <enum>QSlider::TickPosition::TicksBothSides</enum>
+              </property>
+             </widget>
+            </item>
+             <item row="5" column="0" colspan="2">
               <layout class="QGridLayout" name="grid_configs">
                <item row="0" column="0">
                 <widget class="QLabel" name="label_checkpoint">
@@ -312,7 +454,7 @@
                </item>
               </layout>
             </item>
-            <item row="3" column="0" colspan="5">
+            <item row="4" column="0" colspan="5">
              <layout class="QHBoxLayout" name="horizontal_result">
               <item>
                <widget class="QLabel" name="label_results">
@@ -362,17 +504,7 @@
               </item>
              </layout>
             </item>
-            <item row="0" column="0">
-             <widget class="QLabel" name="label_cpu_allocation">
-              <property name="enabled">
-               <bool>false</bool>
-              </property>
-              <property name="text">
-               <string>CPU allocation:</string>
-              </property>
-             </widget>
-            </item>
-            <item row="5" column="2">
+            <item row="6" column="2">
              <layout class="QHBoxLayout" name="horizontal_stop_start">
               <item>
                <spacer name="horizontalSpacer_3">
@@ -409,17 +541,7 @@
               </item>
              </layout>
             </item>
-            <item row="2" column="0">
-             <widget class="QLabel" name="label_mem_allocation">
-              <property name="enabled">
-               <bool>false</bool>
-              </property>
-              <property name="text">
-               <string>Memory allocation:</string>
-              </property>
-             </widget>
-            </item>
-            <item row="4" column="2">
+            <item row="5" column="2">
              <spacer name="horizontalSpacer">
               <property name="orientation">
                <enum>Qt::Orientation::Horizontal</enum>
