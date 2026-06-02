@@ -217,6 +217,74 @@ def analyze_tiff_files(_path):
     return is_valid, is_stacked, dimensions
 
 
+def classify_project_inputs(_source_directory):
+    """Inspect a project's TIFF inputs (reading only their shapes) and decide how
+    AMAP should reduce each image to a single 2D plane.
+
+    Returns a tuple (input_class, n_channels, description):
+      * input_class: one of 'homogeneous_2d', 'homogeneous_3d',
+        'homogeneous_4d' or 'heterogeneous'. read_file() in the dataset branches
+        on this value.
+      * n_channels: number of selectable channels for 3D/4D inputs, else None.
+        Used to bound the target-channel spin box.
+      * description: a short human-readable summary for the UI status label.
+
+    The channel-axis convention matches read_file(): for 3D it is axis 0, and for
+    4D it is axis 0 when its length is 2, otherwise axis 1.
+    """
+    shapes = []
+    for file_name in filter_tiff_files(_source_directory):
+        try:
+            with tifffile.TiffFile(os.path.join(_source_directory, file_name)) as tif:
+                shapes.append(tuple(tif.series[0].shape))
+        except Exception:
+            # Unreadable file: skip it for classification purposes.
+            continue
+
+    count = len(shapes)
+    if count == 0:
+        return 'heterogeneous', None, "No readable TIFF inputs found."
+
+    def channel_axis_size(_shape):
+        rank = len(_shape)
+        if rank == 3:
+            return _shape[0]
+        if rank == 4:
+            return _shape[0] if _shape[0] == 2 else _shape[1]
+        return None
+
+    ranks = {len(s) for s in shapes}
+    if len(ranks) != 1:
+        return 'heterogeneous', None, (
+            "%d image(s) with mixed dimensionality — processed automatically "
+            "(max projection)." % count)
+
+    rank = ranks.pop()
+    if rank == 2:
+        return 'homogeneous_2d', None, (
+            "%d image(s) · 2-D — used as-is (no projection or channel "
+            "selection)." % count)
+
+    if rank in (3, 4):
+        channel_counts = {channel_axis_size(s) for s in shapes}
+        if len(channel_counts) != 1:
+            return 'heterogeneous', None, (
+                "%d image(s) with inconsistent channel counts — processed "
+                "automatically (max projection)." % count)
+        n_channels = channel_counts.pop()
+        if rank == 3:
+            return 'homogeneous_3d', n_channels, (
+                "%d image(s) · 3-D, %d channel(s)/slice(s) — check "
+                "‘Stacked’ for a max projection, or pick a target channel."
+                % (count, n_channels))
+        return 'homogeneous_4d', n_channels, (
+            "%d image(s) · 4-D multi-channel stack, %d channel(s) — max "
+            "projection then the selected target channel." % (count, n_channels))
+
+    return 'heterogeneous', None, (
+        "%d image(s) · %d-D — processed automatically." % (count, rank))
+
+
 def fill_with_colors(_image, _mask, ncomp, cols):
     for nc in range(1, ncomp + 1):
         rgb = list(colorsys.hsv_to_rgb(cols[nc - 1], 0.75, 1))

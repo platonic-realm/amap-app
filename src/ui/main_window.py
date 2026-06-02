@@ -21,7 +21,8 @@ from src.engine import AMAPEngine
 from src.morph import AMAPMorphometry
 from src.ui.ui_mainwindow import Ui_MainWindow
 from src.utils import filter_tiff_files, analyze_tiff_files, create_progress_dialog, create_message_box, \
-    open_dir_in_browser, cpu_threads_from_level, cpu_percent_from_level, batch_size_from_level, suggested_workers
+    open_dir_in_browser, cpu_threads_from_level, cpu_percent_from_level, batch_size_from_level, suggested_workers, \
+    classify_project_inputs
 
 
 class MainWindow(QMainWindow):
@@ -89,6 +90,13 @@ class MainWindow(QMainWindow):
         self.label_cpu_value = None
         self.label_mem_value = None
         self.label_workers_value = None
+        # Small-font status label describing the selected project's input images.
+        self.label_input_info = None
+        # Classification of the selected project's inputs (see
+        # classify_project_inputs). Cached so the gating can be re-applied after
+        # a run without re-reading the images.
+        self._current_input_class = None
+        self._current_n_channels = None
 
         # Start, Stop & Results buttons
         self.button_start = None
@@ -195,6 +203,10 @@ class MainWindow(QMainWindow):
         self.label_workers_value = self.findChild(QLabel, "label_workers_value")
         self.label_workers_value.setFont(value_font)
 
+        # Status label describing the selected project's input images.
+        self.label_input_info = self.findChild(QLabel, "label_input_info")
+        self.label_input_info.setFont(value_font)
+
         # Handling stacked checkbox changes
         self.check_stacked = self.findChild(QCheckBox, "check_stacked")
         self.check_stacked.stateChanged.connect(self.checkbox_stack_change)
@@ -224,6 +236,28 @@ class MainWindow(QMainWindow):
         project_name = _selected_item.text()
         project_configs_path = f'./{PROJECT_DIR}/{project_name}/conf.json'
         project_configs = self.load_project_configuration(project_configs_path)
+
+        # Inspect the project's images to decide which input options apply, and
+        # persist the classification (older projects predate it; read_file and
+        # the gating below rely on it).
+        input_class, n_channels, input_description = classify_project_inputs(
+            project_configs['source_dir'])
+        self._current_input_class = input_class
+        self._current_n_channels = n_channels
+        config_dirty = False
+        if project_configs.get('input_class') != input_class or \
+                project_configs.get('n_channels') != n_channels:
+            project_configs['input_class'] = input_class
+            project_configs['n_channels'] = n_channels
+            config_dirty = True
+        # A 4D input is always a stack, so make that explicit in the config.
+        if input_class == 'homogeneous_4d' and not project_configs.get('is_stacked'):
+            project_configs['is_stacked'] = True
+            config_dirty = True
+        if config_dirty:
+            self.save_project_configuration(project_configs_path, project_configs)
+        self.label_input_info.setText(input_description)
+        self.label_input_info.setEnabled(True)
 
         self.slider_cpu.setValue(project_configs['cpu_allocation'])
         self.slider_cpu.setEnabled(True)
@@ -287,10 +321,38 @@ class MainWindow(QMainWindow):
         self.slider_workers.setEnabled(not project_configs['is_morphometry_finished'])
         self.button_stop.setEnabled(False)
 
+        # Gate the Stacked / Target-channel controls to the detected input class.
+        # This is the final word on their enabled state, so it must run after the
+        # blanket enabling above.
+        self._apply_input_gating(input_class, n_channels,
+                                 project_configs['is_morphometry_finished'])
+
         self.button_remove_project.setEnabled(True)
 
         self.is_disabled = False
         self.is_loading = False
+
+    # Enable the Stacked / Target-channel controls only for the input classes
+    # they apply to, and bound the channel spin box to the real channel count.
+    # See classify_project_inputs (utils) and read_file (dataset).
+    def _apply_input_gating(self, _input_class, _n_channels, _finished):
+        if _input_class == 'homogeneous_3d':
+            stacked_enabled, channel_enabled = True, True
+        elif _input_class == 'homogeneous_4d':
+            # A 4D input is always a stack: force the checkbox on and lock it.
+            self.check_stacked.setChecked(True)
+            stacked_enabled, channel_enabled = False, True
+        else:  # homogeneous_2d or heterogeneous: neither control applies
+            stacked_enabled, channel_enabled = False, False
+
+        self.check_stacked.setEnabled(stacked_enabled and not _finished)
+
+        if channel_enabled and _n_channels:
+            self.spin_channel.setMaximum(max(0, _n_channels - 1))
+        else:
+            self.spin_channel.setMaximum(20)
+        self.spin_channel.setEnabled(channel_enabled and not _finished)
+        self.label_channel.setEnabled(channel_enabled and not _finished)
 
     # Changes the channel configuration for the selected project
     def spin_channel_change(self, _value):
@@ -654,6 +716,12 @@ class MainWindow(QMainWindow):
             if os.path.isfile(full_name):
                 shutil.copy(full_name, images_directory)
 
+        # Classify the inputs so read_file and the UI know how to handle them.
+        input_class, n_channels, _ = classify_project_inputs(images_directory)
+        # A 4D input is always a stack.
+        if input_class == 'homogeneous_4d':
+            is_stacked = True
+
         # Saving the configuration file into the project directory (Do not confuse with 'Projects' dir)
         project_configuration = {
             "project_id": f"{uuid.uuid4()}",
@@ -669,6 +737,8 @@ class MainWindow(QMainWindow):
             "batch_size": 8,
             "dimensionality": 16,
             "is_stacked": is_stacked,
+            "input_class": input_class,
+            "n_channels": n_channels,
             "is_segmentation_finished": False,
             "is_morphometry_finished": False,
             "is_old_roi": False,
@@ -727,6 +797,8 @@ class MainWindow(QMainWindow):
         self.label_results.setEnabled(False)
         self.button_results_segmentation.setEnabled(False)
         self.button_results_morphometry.setEnabled(False)
+        # Grey out the input status line (its text is kept so it survives a run).
+        self.label_input_info.setEnabled(False)
         self.is_disabled = True
 
         self.slider_cpu.setValue(0)
@@ -798,6 +870,10 @@ class MainWindow(QMainWindow):
         self.slider_workers.setValue(_UI_state[25])
         self.label_workers.setEnabled(_UI_state[26])
         self._sync_value_label_states()
+        # Re-apply input gating (Stacked / Target channel) for the active project
+        # and bring back the input status line.
+        self._apply_input_gating(self._current_input_class, self._current_n_channels, False)
+        self.label_input_info.setEnabled(True)
         self.is_loading = False
 
     def load_projects(self):

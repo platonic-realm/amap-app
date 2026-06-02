@@ -294,6 +294,13 @@ class Ui_MainWindow(object):
 
         self.grid_configs.addWidget(self.check_use_gpu, 5, 0, 1, 1)
 
+        self.label_input_info = QLabel(self.frame_projects)
+        self.label_input_info.setObjectName(u"label_input_info")
+        self.label_input_info.setEnabled(False)
+        self.label_input_info.setWordWrap(True)
+
+        self.grid_configs.addWidget(self.label_input_info, 6, 0, 1, 2)
+
 
         self.grid_project.addLayout(self.grid_configs, 5, 0, 1, 2)
 
@@ -388,6 +395,7 @@ class Ui_MainWindow(object):
         self.check_old_roi.setText(QCoreApplication.translate("MainWindow", u"Old ROI algorithm (AMAP)", None))
         self.check_include_sd.setText(QCoreApplication.translate("MainWindow", u"SD length analysis", None))
         self.check_use_gpu.setText(QCoreApplication.translate("MainWindow", u"Use GPU", None))
+        self.label_input_info.setText("")
         self.label_results.setText(QCoreApplication.translate("MainWindow", u"Results:", None))
         self.button_result_segmentation.setText(QCoreApplication.translate("MainWindow", u"Segmentation", None))
         self.button_result_morphometry.setText(QCoreApplication.translate("MainWindow", u"Morphometry", None))

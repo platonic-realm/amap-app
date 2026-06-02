@@ -82,19 +82,34 @@ class PredictionDataset(Dataset):
 
         img = tifffile.imread(os.path.join(self.source_directory, fn))
 
-        # Choosing the channel and max projecting if needed
-
-        # if self.configs['is_stacked']:
-        if len(img.shape) > 3:
-            if img.shape[0] == 2:
-                img = np.max(img, axis=1)
-            else:
+        # Reduce the input to a single 2D plane. How depends on the project's
+        # detected input class (see classify_project_inputs):
+        #   homogeneous_2d  -> already a single plane, use as-is
+        #   homogeneous_3d  -> stacked: max projection; otherwise pick the channel
+        #   homogeneous_4d  -> max-project the stack, then pick the channel
+        #   heterogeneous / unknown (legacy) -> shape-based heuristic
+        input_class = self.configs.get('input_class')
+        if input_class == 'homogeneous_2d':
+            pass
+        elif input_class == 'homogeneous_3d':
+            if self.configs['is_stacked']:
                 img = np.max(img, axis=0)
-        elif len(img.shape) == 3:
-            img = np.max(img, axis=0)
-
-        if len(img.shape) > 2:
+            else:
+                img = img[self.configs['target_channel']]
+        elif input_class == 'homogeneous_4d':
+            img = np.max(img, axis=1) if img.shape[0] == 2 else np.max(img, axis=0)
             img = img[self.configs['target_channel']]
+        else:
+            if len(img.shape) > 3:
+                if img.shape[0] == 2:
+                    img = np.max(img, axis=1)
+                else:
+                    img = np.max(img, axis=0)
+            elif len(img.shape) == 3:
+                img = np.max(img, axis=0)
+
+            if len(img.shape) > 2:
+                img = img[self.configs['target_channel']]
 
         img = Image.fromarray(img)
         w, h = img.size
